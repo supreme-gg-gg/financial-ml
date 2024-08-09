@@ -1,14 +1,10 @@
-import random, math, json, gym
-import matplotlib.pyplot as plt
+import random, math, json
 from collections import deque, namedtuple
 from itertools import count
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-from utils import plot_durations
-
-# ======================Load Hyperparameters=======================
 
 with open("config.json", "r") as f:
     config = json.load(f)
@@ -22,9 +18,13 @@ EPS_DECAY = config["EPS_DECAY"]
 TAU = config["TAU"]
 LR = config["LR"]
 
+HIDDEN_SIZE_GRU = config["HIDDEN_SIZE_GRU"]
+NUM_LAYERS_GRU = config["NUM_LAYERS_GRU"]
+DROPOUT = config["DROPOUT"]
+
 # ======================Replay Buffer=======================
 
-Transition = namedtuple("Transition", ("state", "action", "next_state", "reward"))
+Transition = namedtuple("Transition", ("sequence", "action", "next_state", "reward"))
 
 class ReplayMemory(object):
     def __init__(self, capacity):
@@ -38,42 +38,60 @@ class ReplayMemory(object):
     
     def __len__(self):
         return len(self.memory)
-    
-# ======================Neural Network=======================
 
 # For now we assume transitions are totally deterministic
 
-class DQN(nn.Module):
+'''
+    - Num_layers is the number of GRU units stacked on top of each other
+    - Hidden_size is the number of features in the hidden state h
+    - Output_size is the number of features in the output (e.g. number of actions)
+'''
 
-    def __init__(self, n_observations, n_actions):
-        super(DQN, self).__init__()
-        self.layer1 = nn.Linear(n_observations, 128)
-        self.layer2 = nn.Linear(128, 128)
-        self.layer3 = nn.Linear(128, n_actions)
+class GDQN(nn.Module):
+
+    '''
+    Gated Deep Q Network
+    GRU -> Dropout -> GRU -> Dropout -> Linear
+    '''
+
+    def __init__(self, input_size, output_size):
+        super(GDQN, self).__init__()
+        
+        self.gru = nn.Sequential(
+            # PyTorch automatically initializes hidden state to 0 if not provided
+            nn.GRU(input_size=input_size, hidden_size=HIDDEN_SIZE_GRU, num_layers=NUM_LAYERS_GRU, batch_first=True),
+            nn.Dropout(p=DROPOUT),
+            nn.GRU(input_size=HIDDEN_SIZE_GRU, hidden_size=HIDDEN_SIZE_GRU, num_layers=1, batch_first=True),
+            nn.Dropout(p=DROPOUT),
+        )
+        self.flatten = nn.Flatten()
+        self.fc = nn.Linear(HIDDEN_SIZE_GRU, output_size)
 
     # Called with either one element to determine next action, or a batch
     # during optimization. Returns tensor([[left0exp,right0exp]...]).
     def forward(self, x):
-        x = F.relu(self.layer1(x))
-        x = F.relu(self.layer2(x))
-        return self.layer3(x)
+        x = self.gru(x)
+        # out: batch_size, seq_length, hidden_size
+        x = self.flattent(x)
+        # We only need the last timestep output for the fully-connected layer
+        x = self.fc(x[:, -1, :])
+        return x
     
-# ======================Agent=======================
-
 class DQNAgent():
 
     def __init__(self, env, device):
-        n_observations = len(env.reset()[0])
+        n_observations, n_features = env.reset().shape # returns a sequence of observations in shape (sequence_length, n_features)
         n_actions = env.action_space.n
 
-        policy_net = DQN(n_observations, n_actions).to(device)
-        target_net = DQN(n_observations, n_actions).to(device)
+        policy_net = GDQN(n_features, n_actions).to(device)
+        target_net = GDQN(n_features, n_actions).to(device)
         target_net.load_state_dict(policy_net.state_dict())
 
         self.env = env
         self.device = device
         self.n_actions = n_actions
-        self.n_observations = n_observations
+        self.n_observations = n_observations # this is equivalent to sequence_length, which is defined in the env
+        self.n_features = n_features
         self.policy_net = policy_net
         self.target_net = target_net
         self.optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
@@ -94,35 +112,40 @@ class DQNAgent():
     
     def optimize_model(self):
 
+        # In the modified implementation, each batch contains BATCH_SIZE of sequences
+        # In other words, each state entry in memory buffer is a sequence of observations
+
         if len(self.memory) < BATCH_SIZE:
             return
         
         # Sample a random batch of transitions and unpack them into their own tensors
         transitions = self.memory.sample(BATCH_SIZE)
         batch = Transition(*zip(*transitions))
-        state_batch = torch.cat(batch.state)
-        action_batch = torch.cat(batch.action)
-        reward_batch = torch.cat(batch.reward)
+
+        # Concatenate sequences to form batch of sequences for training
+        state_batch = torch.stack(batch.state) # (BATCH_SIZE, SEQ_LENGTH, input_size)
+        action_batch = torch.stack(batch.action) # (BATCH_SIZE, SEQ_LENGTH)
+        reward_batch = torch.stack(batch.reward) # (BATCH_SIZE, SEQ_LENGTH)
 
         # Also track non-final states and their indices (basically the "done" field)
-        non_final_mask = torch.tensor(tuple(map(lambda s: s is not None, batch.next_state)), device=self.device, dtype=torch.bool)
-        non_final_next_states = torch.cat([s for s in batch.next_state if s is not None])
+        non_final_mask = torch.tensor([s is not None for s in batch.next_state], device=self.device, dtype=torch.bool)
+        non_final_next_states = torch.stack([s for s in batch.next_state if s is not None]) # (BATCH_SIZE, SEQ_LENGTH, input_size)
         
         # Compute Q(s_t, a) - the model computes Q(s_t), then we select the columns of actions taken
-        state_action_values = self.policy_net(state_batch).gather(1, action_batch)
+        state_action_values = self.policy_net(state_batch).gather(1, action_batch.unsqueeze(-1).expand(-1, -1, self.n_actions))
 
         # Compute V(s') for all next states, expected values of actions for 
         # non_final_next_states are based on the older target_net, select best reward
-        next_state_values = torch.zeros(BATCH_SIZE, device=self.device)
+        next_state_values = torch.zeros((BATCH_SIZE, self.n_observations), device=self.device)
         with torch.no_grad():
-            next_state_values[non_final_mask] = self.target_net(non_final_next_states).max(1).values
+            next_state_values[non_final_mask] = self.target_net(non_final_next_states).max(2).values # max along feature dimension
         
         # Compute the expected Q values
-        expected_state_action_values = (next_state_values * GAMMA) + reward_batch
+        expected_state_action_values = (next_state_values.max(1).values * GAMMA) + reward_batch
 
         # Unlike the TF example we are using Huber Loss here (look it up)
         criterion = nn.SmoothL1Loss()
-        loss = criterion(state_action_values, expected_state_action_values.unsqueeze(1))
+        loss = criterion(state_action_values.view(-1), expected_state_action_values.view(-1))
 
         # Optimize the model
         self.optimizer.zero_grad()
@@ -176,4 +199,4 @@ class DQNAgent():
     
         return episode_durations
 
-print("DQN Module Loaded")
+print("Agent Module Loaded")
