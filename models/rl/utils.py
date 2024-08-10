@@ -1,6 +1,33 @@
 import matplotlib.pyplot as plt
 import matplotlib
 import torch
+import pandas as pd, numpy as np
+
+def get_data(file_path, scale=True):
+
+    '''
+    Obtains and preprocesses the data from the file path.
+    Performs regularisation if scale is set to True.
+    Currently uses only the 'Adj Close' and 'Volume' columns.
+    Computes the return of the stock.
+    '''
+
+    # TODO: Add technical indicators in processing data
+
+    df = pd.read_csv(file_path)
+    df = df[['Adj Close', 'Volume']]
+    df.Volume.replace(0,1,inplace=True)
+    df['Return'] = (df['Adj Close'] - df['Adj Close'].shift()) / df['Adj Close'].shift()
+    R = df.Return
+    if scale:
+        mean = df.mean(axis=0)
+        std = df.std(axis=0)
+        df = (df - np.array(mean)) / np.array(std)
+    df['Return'] = R # Return is not scaled
+    # min_values = df.min(axis=0)
+    # max_values = df.max(axis=0)
+    data = df
+    return data
 
 def plot_durations(episode_durations, show_result=False):
     

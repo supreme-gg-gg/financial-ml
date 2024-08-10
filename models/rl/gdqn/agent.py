@@ -5,6 +5,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
+from models.rl.utils import plot_durations
+from models.rl.envs.env import TradingEnv
 
 with open("config.json", "r") as f:
     config = json.load(f)
