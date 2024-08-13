@@ -8,26 +8,69 @@ def get_data(file_path, scale=True):
     '''
     Obtains and preprocesses the data from the file path.
     Performs regularisation if scale is set to True.
-    Currently uses only the 'Adj Close' and 'Volume' columns.
-    Computes the return of the stock.
+    Computes return as well as technical indicators
+    that provides a total of 10 feature to the agent.
     '''
 
-    # TODO: Add technical indicators in processing data
+    df = pd.read_csv(file_path, parse_dates=True, index_col=0)
+    df.Volume = df.Volume.replace(0,1)
+    df['Return'] = df["Adj Close"].pct_change()
 
-    df = pd.read_csv(file_path)
-    df = df[['Adj Close', 'Volume']]
-    df.Volume.replace(0,1,inplace=True)
-    df['Return'] = (df['Adj Close'] - df['Adj Close'].shift()) / df['Adj Close'].shift()
+    # these functions append to df directly
+    get_sma(df)
+    get_ema(df)
+    get_macd(df)
+    get_bias(df)
+    get_vvr(df)
+
     R = df.Return
     if scale:
         mean = df.mean(axis=0)
         std = df.std(axis=0)
-        df = (df - np.array(mean)) / np.array(std)
+        df = (df - mean) / std
     df['Return'] = R # Return is not scaled
-    # min_values = df.min(axis=0)
-    # max_values = df.max(axis=0)
-    data = df
-    return data
+
+    # The first 15 rows are removed as they contain NaN values
+    # due to the computation of technical indicators
+
+    return df[15:]
+
+def get_sma(df, window=15):
+
+    '''
+    SMA = (Sum of prices for the last N days) / N
+    '''
+
+    df["SMA"] = df["Adj Close"].rolling(window).mean().shift()
+
+def get_ema(df, window=5):
+
+    # EMA = (Price(t) * k) + (EMA(y) * (1 - k))
+
+    df["EMA"] = df["Adj Close"].ewm(window).mean().shift()
+
+def get_macd(df, slow=26, fast=12):
+
+    # MACD = EMA(fast) - EMA(slow)
+
+    df["MACD"] = df["Adj Close"].ewm(fast).mean().shift() - df["Adj Close"].ewm(slow).mean().shift()
+
+def get_bias(df):
+
+    # BIAS = (Price - SMA) / SMA
+    
+    df["BIAS"] = (df["Adj Close"] - df["SMA"]) / df["SMA"]
+
+def get_vvr(df, window=14):
+
+    # VVR = TR / ATR where TR = max(High - Low, High - Close, Close - Low), ATR = average TR over N days
+    
+    df["TTR"] = np.maximum((df["High"] - df["Low"]), np.abs(df["High"] - df["Close"].shift()), np.abs(df["Low"] - df["Close"].shift()))
+    df["ATR"] = df["TTR"].rolling(window).mean()
+
+    df["VVR"] = df["TTR"] / df["ATR"]
+
+    df.drop(columns=["TTR", "ATR"], inplace=True)
 
 def plot_durations(episode_durations, show_result=False):
     
