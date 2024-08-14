@@ -1,7 +1,5 @@
 import gymnasium as gym
-import pandas as pd
-import numpy as np
-from models.rl.envs.env import TradingEnv
+import models.rl.envs
 
 env = gym.make('trading-v0')
 
@@ -12,18 +10,19 @@ Episodes=1
 obs = []
 
 for _ in range(Episodes):
-    observation = env.reset()
-    done = False
+    observation = env.reset()[0]
+    terminated, truncated = False, False
     count = 0
-    while not done:
+
+    while not terminated and not truncated:
         action = env.action_space.sample() # random
-        observation, reward, done, info = env.step(action)
+        observation, reward, terminated, truncated, info = env.step(action)
         obs = obs + [observation]
-        #print observation,reward,done,info
-        count += 1
-        if done:
+        
+        if terminated or truncated:
             print(reward)
             print(count)
 
-df.head()
-df.tail()
+        count += 1
+    
+    print("Episode finished after {} timesteps".format(count))

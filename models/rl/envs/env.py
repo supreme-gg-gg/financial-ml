@@ -1,6 +1,5 @@
 import gymnasium as gym, numpy as np
 from gymnasium import spaces
-import pandas as pd
 from models.rl.utils import get_data
 
 '''
@@ -10,103 +9,140 @@ so that it can reutrn a sequence of observations of length N.
 This makes the training process simpler.
 '''
 
-# TO BE WRITTEN: Importing data and processing it so the env can use it
-
 SEQUENCE_LENGTH = 20
 TRADING_COST_BPS = 1e-3
-
-# Modify and see how to use this for reward function instead!!
-def _sharpe(Returns, freq=252):
-    """Given a set of returns, calculates naive (rfr=0) sharpe """
-    return (np.sqsrt(freq)*np.mean(Returns)) / np.std(Returns)
+STEPS = 252
 
 class TradingEnv(gym.Env):
 
     '''
-    - bod_position = begin of day position -- Short (0), Flat(1), Long(2)
-    - positions (array) = a list that stores the position of agent over time
+    Sample usage: 
+    - env = TradingEnv()
+    - state = env.reset()
+    - action = env.action_space.sample()
+    - next_state, reward, done, _ = env.step(action)
     '''
 
-    def __init__(self, steps, sequence_length=SEQUENCE_LENGTH):
+    def __init__(self, steps=STEPS, sequence_length=SEQUENCE_LENGTH):
         super(TradingEnv, self).__init__()
         self.sequence_length = sequence_length
         self.steps = steps
         self.current_step = 0
-        self.asset = 10_000
-        self.rtn = np.ones(self.steps)
-        self.benchmark_rtn = 0 # Buy and hold benchmark return
+        self.data = get_data("../models/rl/data/GOOG.csv")
+        self.episode = 0
+        # self.asset = 10_000
+
         self.actions = np.zeros(self.steps)
+        self.rtn = np.ones(self.steps)
         self.mkt_rtn = np.zeros(self.steps)
-        self.data = get_data()
         self.trades = np.zeros(self.steps)
         self.positions = np.zeros(self.steps)
-
+        self.costs = np.zeros(self.steps)
 
         # Action and observation space
-        self.action_space = spaces.Discrete(3)  # Buy, Hold, Sell
-        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(sequence_length, 10), dtype=np.float32)
+        self.action_space = spaces.Discrete(3)  # 0, 1, 2
+        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(sequence_length, 10), dtype=np.float64)
 
         # Initialize state buffer
         self.state_buffer = np.zeros((sequence_length, 10))
 
-    def reset(self):
-        
-        # TODO: We need to come back to initialize stuff properly!
+    def reset(self, seed=None, options=None):
+
+        '''
+        You can access the state_buffer (sequence of observations) by env.reset()[0]
+        @param: none
+        @returns: state_buffer, {}
+        '''
 
         self.current_step = 0
-        self.asset = 10_000
-        self.rtn = 0
-        self.benchmark_rtn = 0
+        # self.asset = 10_000
+        self.actions = np.zeros(self.steps)
+        self.rtn = np.ones(self.steps)
+        self.mkt_rtn = np.zeros(self.steps)
+        self.trades = np.zeros(self.steps)
+        self.positions = np.zeros(self.steps)
+        self.costs = np.zeros(self.steps)
         # Reset the state buffer
         self.state_buffer = np.zeros((self.sequence_length, 10))
-        return self.state_buffer
+
+        # Each episode uses data from a different year
+        # The first time we call reset is for episode 0, then when episode 1 starts...
+        start_idx = self.episode * 252
+        end_idx = start_idx + 252
+        self.df = self.data.iloc[start_idx:end_idx].copy()
+        self.episode += 1
+        
+        return (self.state_buffer, {})
 
     def step(self, action):
-        assert self.action_space.contains(action), "%r (%s) invalid" % (action, type(action))   
+        assert self.action_space.contains(action), f"{action} ({type(action)}) invalid" 
 
-        # Update the current step
-        obs = self.data.iloc[self.current_step]
-        done = self.check_completion()
+        # Update the state sequence with the latest observation
+        obs = self.df.iloc[self.current_step]
+        # Since obs is a series not a df we need to use labels not columns
+        features = obs.drop(labels=["Return"])
         self.state_buffer = np.roll(self.state_buffer, shift=-1, axis=0)
-        self.state_buffer[-1] = obs
-
-        # This represents the position at the beginning of the day
-        bod_position = 0.0 if self.current_step ==0 else self.positions[self.current_step -1]
-        
-        reward = 0  # Compute the reward based on the action
+        self.state_buffer[-1] = features
 
         self.mkt_rtn[self.current_step] = obs['Return']
         self.actions[self.current_step] = action
 
-        self.positions[self.current_step] = action - 1
-        self.trades[self.current_step] = self.positions[self.current_step] - bod_position
+        # This represents the position at the beginning of the day (bod), 0, 1, or 2 (short, flat, long)
+        bod_position = 0.0 if self.current_step == 0 else self.positions[self.current_step - 1]
+        # This is an array that stores the position of the agent over time
+        self.positions[self.current_step] = action - 1 # here -1 is short, 0 is flat, 1 is long
+
+        self.trades[self.current_step] = self.positions[self.current_step] - bod_position # trade size, e.g. from long to short would be -1 - 1 = -2
         self.costs[self.current_step] = abs(self.trades[self.current_step]) * TRADING_COST_BPS
+        
         # For now we don't use time cost to simplify the problem
-        reward = ((bod_position * obs['Return']) - self.costs[self.current_step])
-        self.rtn[self.current_step] = reward
+        # Assume daily trading executed at the close
+        self.rtn[self.current_step] = (bod_position * obs['Return']) - self.costs[self.current_step]
+        reward = self.calculate_sortino_ratio()
+
+        # self.asset = self.asset - self.costs[self.current_step] + self.trades[self.current_step] * obs["Adj Close"]
+
+        # In OpenAI Gym v26 "done" is removed for "terminated" and "truncated"
+        # Terminated: reached terminal state in MDP/ goal state
+        # Truncated: end prematurely before a terminal state reached (e.g. timelimit, out of bounds)
+
+        terminated = self.check_termination()
+        truncated = self.check_truncation()
 
         self.current_step += 1
 
-        return self.state_buffer, reward, done, {}
+        return self.state_buffer, reward, terminated, truncated, {}
     
-    def check_completion(self):
-        if self.current_step >= self.steps:
-            return True
-        elif self.asset <= 0:
-            return True
-        elif self.rtn >= self.benchmark_rtn * 2:
-            return True
-        else:
-            return False
+    def calculate_sortino_ratio(self, risk_free_rate=0.04):
+        
+        # OR: rewards = rewards[-22]
+        
+        negative_returns = self.rtn[self.rtn < 0]
+        if len(negative_returns) < 2:
+            return 0.0
 
-    def calculate_rewards(self):
-        pass
+        mean_return = np.mean(self.rtn)
+        downside_deviation = np.std(negative_returns)
 
-    def calculate_returns(self):
-        pass
+        sortino_ratio = (mean_return - risk_free_rate) / downside_deviation
 
-# Example usage
-env = TradingEnv()
-state = env.reset()
-action = env.action_space.sample()
-next_state, reward, done, _ = env.step(action)
+        return sortino_ratio
+
+    def check_termination(self):
+
+        '''
+        More conditions can be added here to terminate the episode early (e.g. negative asset)
+        Each episode is a trading year with 252 trading days as 252 timesteps
+        '''
+
+        # Other examples may be the agent solved the environment...
+
+        return True if self.current_step >= (self.steps - 1) else False
+    
+    def check_truncation(self):
+
+        # In reality we would check like negative assets, etc.
+
+        return False
+
+print("Environment imported successfully")

@@ -3,17 +3,19 @@ import matplotlib
 import torch
 import pandas as pd, numpy as np
 
-def get_data(file_path, scale=True):
+def get_data(filepath, scale=True):
 
     '''
     Obtains and preprocesses the data from the file path.
+    The file path must be relative to the current working directory.
     Performs regularisation if scale is set to True.
     Computes return as well as technical indicators
     that provides a total of 10 feature to the agent.
     '''
 
-    df = pd.read_csv(file_path, parse_dates=True, index_col=0)
+    df = pd.read_csv(filepath, parse_dates=True, index_col=0)
     df.Volume = df.Volume.replace(0,1)
+    df.drop(columns=["Close"], inplace=True)
     df['Return'] = df["Adj Close"].pct_change()
 
     # these functions append to df directly
@@ -65,7 +67,7 @@ def get_vvr(df, window=14):
 
     # VVR = TR / ATR where TR = max(High - Low, High - Close, Close - Low), ATR = average TR over N days
     
-    df["TTR"] = np.maximum((df["High"] - df["Low"]), np.abs(df["High"] - df["Close"].shift()), np.abs(df["Low"] - df["Close"].shift()))
+    df["TTR"] = np.maximum((df["High"] - df["Low"]), np.abs(df["High"] - df["Adj Close"].shift()), np.abs(df["Low"] - df["Adj Close"].shift()))
     df["ATR"] = df["TTR"].rolling(window).mean()
 
     df["VVR"] = df["TTR"] / df["ATR"]
