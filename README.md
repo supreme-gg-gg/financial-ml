@@ -3,6 +3,8 @@ Working Directory for Financial Machine Learning Research in Supervised and Rein
 
 ## File structure
 
+Before you push any code, please follow this structure to avoid conflicts and for easy navigation.
+
 ```plaintext
 financial-ml/
 │
