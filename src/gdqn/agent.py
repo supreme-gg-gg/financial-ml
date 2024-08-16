@@ -65,7 +65,7 @@ class GDQN(nn.Module):
 
         # PyTorch automatically initializes hidden state to 0 if not provided
         self.gru1 = nn.GRU(input_size=input_size, hidden_size=HIDDEN_SIZE_GRU, num_layers=NUM_LAYERS_GRU, batch_first=True)
-        self. dropout1 = nn.Dropout(p=DROPOUT)
+        self.dropout1 = nn.Dropout(p=DROPOUT)
         self.gru2 = nn.GRU(input_size=HIDDEN_SIZE_GRU, hidden_size=HIDDEN_SIZE_GRU, num_layers=1, batch_first=True)
         self.dropout2 = nn.Dropout(p=DROPOUT)
         self.fc = nn.Linear(HIDDEN_SIZE_GRU, output_size)
@@ -76,14 +76,32 @@ class GDQN(nn.Module):
         # Unpack the tuple -- (output: topmost layer, h_n: hidden state of each layer)
         # output is a tensor of batch_size, seq_length, hidden_size dimensions
         x += 1e-8 # stabalize training
+
+        if torch.isnan(x).any():
+            print("Step: input")
+            print("NaN value detected in x:", x)
+
         x, _ = self.gru1(x)  
         x = self.dropout1(x)
+
+        if torch.isnan(x).any():
+            print("Step: GRU network 1 + Dropout 1")
+            print("NaN value detected in x:", x)
         
         x, _ = self.gru2(x)  # Unpack the tuple
         x = self.dropout2(x)
 
+        if torch.isnan(x).any():
+            print("Step: GRU network 2 + Dropout 2")
+            print("NaN value detected in x:", x)
+
         # We only need the last timestep output for the fully-connected layer
         x = self.fc(x[:, -1, :])
+
+        if torch.isnan(x).any():
+            print("Step: After fc layer")
+            print("NaN value detected in x:", x)
+
         return x
     
 class DQNAgent():
@@ -218,7 +236,10 @@ class DQNAgent():
 
                 logging.info(f"Episode {i} completed in {t + 1} steps")
         
-        torch.save(self.policy_net.state_dict(), "gdqn_trained.pth")
+        # IMPORTANT: the path of model is relative to where the script is run
+        # for now it is ONLY from the gdqn-model.ipynb notebook
+        # but in the future we might need to make it more flexible!!
+        torch.save(self.policy_net.state_dict(), "../../models/gdqn_trained.pth")
         print("Model saved as gdqn_trained.pth")
 
         return episode_durations

@@ -121,18 +121,24 @@ class TradingEnv(gym.Env):
 
         return self.state_buffer, reward, terminated, truncated, {}
     
+    # This function is the key reward function and requires careful data handling
     def calculate_sortino_ratio(self, risk_free_rate=0.04):
         
-        # OR: rewards = rewards[-22]
+        # we will only use the last month's returns to calculate the sortino ratio
+        rewards = self.rtn[:(self.current_step+1)]
         
-        negative_returns = self.rtn[self.rtn < 0]
-        if len(negative_returns) < 2:
-            return 0.0
+        negative_returns = rewards[rewards < 0]
 
-        mean_return = np.mean(self.rtn)
-        downside_deviation = np.std(negative_returns)
+        assert len(rewards) > 0, f"Rewards list is empty at timestep {self.current_step} of episode {self.episode}"
 
-        sortino_ratio = (mean_return - risk_free_rate) / downside_deviation
+        mean_return = np.mean(rewards)
+        downside_deviation = np.std(negative_returns) + 1e-8 if len(negative_returns) > 0 else 1e-8
+
+        try:
+            sortino_ratio = (mean_return - risk_free_rate) / downside_deviation
+        except ZeroDivisionError:
+            print(f"Standard deviation is {downside_deviation}, given list of returns: {self.rtn}, \
+                at timestep {self.current_step} of episode {self.episode}")
 
         return sortino_ratio
 
