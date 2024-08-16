@@ -11,11 +11,15 @@ financial-ml/
 |   ├── dnn/
 |   └── lstm/
 │
-├── tests/ # Test cases for the codebase
+├── test/ # Test cases for the codebase
 |
 ├── data/ # Upload your dataset here
 |
-└── utils/ # helper functions, visualization, envs
+├── models/ # Please set all your scripts to save models here
+|
+├── utils/ # helper functions, visualization, envs
+|
+└── setenv.sh # source this to run scripts
 ```
 
 ## A note to developers
