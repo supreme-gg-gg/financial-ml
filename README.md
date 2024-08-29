@@ -1,5 +1,5 @@
 # financial-ml
-Working Directory for Financial Machine Learning Research in Supervised and Reinforcement Learning Approaches in Various Asset Markets.
+Working Directory for Financial Machine Learning Research in Supervised and Reinforcement Learning Approaches in Various Asset Markets. For each model you submit, you should always include an evaluation (preferably a Jupyter notebook that shows some sort of visualization like graph or table).
 
 ## File structure
 
