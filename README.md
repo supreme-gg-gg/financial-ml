@@ -1,5 +1,5 @@
 # financial-ml
-Working Directory for Financial Machine Learning Research in Supervised and Reinforcement Learning Approaches in Various Asset Markets. For each model you submit, you should always include an evaluation (preferably a Jupyter notebook that shows some sort of visualization like graph or table).
+Working Directory for Financial Machine Learning Research in Supervised and Reinforcement Learning Approaches in Various Asset Markets. For each model you submit, you should always include an evaluation (preferably a Jupyter notebook that shows some sort of visualization like a graph or table).
 
 ## File structure
 
@@ -31,3 +31,5 @@ To resolve file import conflicts, we sometimes use absolute import. It requires 
 ```
 source setenv.sh
 ```
+
+This is a very inefficient way of working and should be replaced by a workaround in the future. If you run into any file path errors, it is likely caused by the non-ideal repository structure of the project. As the modularisation process progresses we expect improvements.
