@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-from utils.helper import plot_durations
+from ..utils.helper import plot_durations
 
 import logging
 logging.basicConfig(filename="training.log", level=logging.INFO)
@@ -77,30 +77,14 @@ class GDQN(nn.Module):
         # output is a tensor of batch_size, seq_length, hidden_size dimensions
         x += 1e-8 # stabalize training
 
-        if torch.isnan(x).any():
-            print("Step: input")
-            print("NaN value detected in x:", x)
-
         x, _ = self.gru1(x)  
         x = self.dropout1(x)
-
-        if torch.isnan(x).any():
-            print("Step: GRU network 1 + Dropout 1")
-            print("NaN value detected in x:", x)
         
         x, _ = self.gru2(x)  # Unpack the tuple
         x = self.dropout2(x)
 
-        if torch.isnan(x).any():
-            print("Step: GRU network 2 + Dropout 2")
-            print("NaN value detected in x:", x)
-
         # We only need the last timestep output for the fully-connected layer
         x = self.fc(x[:, -1, :])
-
-        if torch.isnan(x).any():
-            print("Step: After fc layer")
-            print("NaN value detected in x:", x)
 
         return x
     
@@ -126,18 +110,14 @@ class DQNAgent():
         self.steps_done = 0
         self.num_steps_to_update = NUM_STEPS_TO_UPDATE
     
-    def select_action(self, state):
+    def select_action(self, state, train=True):
 
         eps_threshold = EPS_MIN + (EPS - EPS_MIN) * math.exp(-1. * self.steps_done / EPS_DECAY)
         self.steps_done += 1
 
-        if random.random() > eps_threshold:
+        if random.random() > eps_threshold or not train:
             with torch.no_grad():
                 x = self.policy_net(state)
-                if x.max(1).indices.view(1, 1).item() == -1:
-                    print("Action is -1")
-                    print("State: ", state)
-                    print(x)
                 return x.max(1).indices.view(1, 1)
         else:
             action = self.env.action_space.sample()
@@ -239,9 +219,38 @@ class DQNAgent():
         # IMPORTANT: the path of model is relative to where the script is run
         # for now it is ONLY from the gdqn-model.ipynb notebook
         # but in the future we might need to make it more flexible!!
-        torch.save(self.policy_net.state_dict(), "../../models/gdqn_trained.pth")
+        torch.save(self.policy_net.state_dict(), "../models/gdqn_trained.pth")
         print("Model saved as gdqn_trained.pth")
 
         return episode_durations
+    
+    def test_agent(self, num_episodes, initial_asset=100_000):
+        rewards = []
+        actions = []
+        asset_history = []
+
+        for episode in range(num_episodes):
+            state = self.env.reset()
+            total_reward = 0
+            done = False
+            assets = initial_asset
+            episode_asset_history = [assets]
+            
+            while not done:
+                # In test mode turn off epsilon greedy policy
+                action = self.select_action(state, train=False)
+                next_state, reward, done, _ = self.env.step(action)
+
+                total_reward += reward
+
+                assets += reward
+                episode_asset_history.append(assets)
+                state = next_state
+                actions.append(action)
+            
+            rewards.append(total_reward)
+            asset_history.append(episode_asset_history)
+        
+        return rewards, actions, asset_history
 
 print("Agent Module Loaded")
