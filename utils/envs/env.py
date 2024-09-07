@@ -1,4 +1,4 @@
-import gymnasium as gym, numpy as np
+import gymnasium as gym, numpy as np, pandas as pd
 from gymnasium import spaces
 from utils.helper import get_data
 import logging
@@ -26,15 +26,18 @@ class TradingEnv(gym.Env):
     - next_state, reward, done, _ = env.step(action)
     '''
 
-    def __init__(self, steps=STEPS, sequence_length=SEQUENCE_LENGTH):
+    def __init__(self, steps=STEPS, sequence_length=SEQUENCE_LENGTH, start_date=None):
         super(TradingEnv, self).__init__()
         self.sequence_length = sequence_length
         self.steps = steps
         self.current_step = 0
         # IMPORTANT!! This file path is relative to where you run the script that imports this class
         self.data = get_data("GOOG")
+        # filter the data based on the start date provided
+        if start_date:
+            self.data = self.data[self.data["Date"] >= pd.to_datetimel(start_date)]
+
         self.episode = -1
-        # self.asset = 10_000
 
         self.actions = np.zeros(self.steps)
         self.rtn = np.ones(self.steps)
