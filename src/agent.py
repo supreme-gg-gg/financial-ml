@@ -5,10 +5,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-from ..utils.helper import plot_durations
-
+from utils.helper import plot_durations
 import logging
-logging.basicConfig(filename="training.log", level=logging.INFO)
 
 with open("config.json", "r") as f:
     config = json.load(f)
@@ -90,7 +88,7 @@ class GDQN(nn.Module):
     
 class DQNAgent():
 
-    def __init__(self, env, device):
+    def __init__(self, env, device, model_to_load=None):
         n_observations, n_features = env.reset()[0].shape # returns a sequence of observations in shape (sequence_length, n_features)
         n_actions = env.action_space.n
 
@@ -104,12 +102,29 @@ class DQNAgent():
         self.n_observations = n_observations # this is equivalent to sequence_length, which is defined in the env
         self.n_features = n_features
         self.policy_net = policy_net
+
+        # Loading model is mostly for testing purposes to save time (for now)
+        if model_to_load != None:
+            self.policy_net.load_state_dict(torch.load(model_to_load, map_location=self.device, weights_only=True))
+
         self.target_net = target_net
         self.optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
         self.memory = ReplayMemory(MEMORY_SIZE)
         self.steps_done = 0
         self.num_steps_to_update = NUM_STEPS_TO_UPDATE
-    
+
+        # Set up the training logger
+        train_logger = logging.getLogger('train')
+        train_logger.setLevel(logging.INFO)
+
+        # File handler for training
+        train_handler = logging.FileHandler('logs/train.log', mode='w')
+        train_formatter = logging.Formatter('[%(asctime)s] %(levelname)s: [TRAIN] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+        train_handler.setFormatter(train_formatter)
+        train_logger.addHandler(train_handler)
+
+        self.logger = train_logger
+
     def select_action(self, state, train=True):
 
         eps_threshold = EPS_MIN + (EPS - EPS_MIN) * math.exp(-1. * self.steps_done / EPS_DECAY)
@@ -189,6 +204,7 @@ class DQNAgent():
             for t in count():
                 action = self.select_action(state)
                 observation, reward, terminated, truncated, _ = self.env.step(action.item())
+                self.logger.info(f"reward at timestep {t} of episode {i}: {reward}")
                 reward = torch.tensor([reward], device=self.device, dtype=torch.float32)
                 done = terminated or truncated
 
@@ -212,9 +228,9 @@ class DQNAgent():
                     # duration is how long it took to run that episode
                     episode_durations.append(t + 1)
                     plot_durations(episode_durations)
+                    self.logger.info(f"Episode {i} completed in {t + 1} steps")
                     break
-
-                logging.info(f"Episode {i} completed in {t + 1} steps")
+                
         
         # IMPORTANT: the path of model is relative to where the script is run
         # for now it is ONLY from the gdqn-model.ipynb notebook
@@ -223,34 +239,5 @@ class DQNAgent():
         print("Model saved as gdqn_trained.pth")
 
         return episode_durations
-    
-    def test_agent(self, num_episodes, initial_asset=100_000):
-        rewards = []
-        actions = []
-        asset_history = []
-
-        for episode in range(num_episodes):
-            state = self.env.reset()
-            total_reward = 0
-            done = False
-            assets = initial_asset
-            episode_asset_history = [assets]
-            
-            while not done:
-                # In test mode turn off epsilon greedy policy
-                action = self.select_action(state, train=False)
-                next_state, reward, done, _ = self.env.step(action)
-
-                total_reward += reward
-
-                assets += reward
-                episode_asset_history.append(assets)
-                state = next_state
-                actions.append(action)
-            
-            rewards.append(total_reward)
-            asset_history.append(episode_asset_history)
-        
-        return rewards, actions, asset_history
 
 print("Agent Module Loaded")
