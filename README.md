@@ -2,7 +2,7 @@
 
 Working Directory for Financial Machine Learning Research in Supervised and Reinforcement Learning Approaches in Various Asset Markets.
 
-**For each model you submit, you should always include an evaluation (preferably a Jupyter notebook that shows some sort of visualization like a graph or table).**s
+**For each model you submit, you should always include an evaluation (preferably a Jupyter notebook that shows some sort of visualization like a graph or table).**
 
 > Note that the project is built mainly on PyTorch, and new submissions are preferred to follow. However, TensorFlow still remains an open option.
 
