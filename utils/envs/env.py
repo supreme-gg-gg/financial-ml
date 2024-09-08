@@ -1,9 +1,6 @@
 import gymnasium as gym, numpy as np, pandas as pd
 from gymnasium import spaces
 from utils.helper import get_data
-import logging
-
-logging.basicConfig(filename="training.log", level=logging.INFO)
 
 '''
 The environment will not return single feature vectors for each observation.
@@ -26,19 +23,16 @@ class TradingEnv(gym.Env):
     - next_state, reward, done, _ = env.step(action)
     '''
 
-    def __init__(self, steps=STEPS, sequence_length=SEQUENCE_LENGTH, start_date=None):
+    def __init__(self, steps=STEPS, sequence_length=SEQUENCE_LENGTH):
         super(TradingEnv, self).__init__()
         self.sequence_length = sequence_length
         self.steps = steps
         self.current_step = 0
         # IMPORTANT!! This file path is relative to where you run the script that imports this class
-        self.data = get_data("GOOG")
-        # filter the data based on the start date provided
-        if start_date:
-            self.data = self.data[self.data["Date"] >= pd.to_datetimel(start_date)]
-
+        self.data, self.mean, self.std = get_data("GOOG")
+        self.std.drop(["Return"], inplace=True)
+        self.mean.drop(["Return"], inplace=True)
         self.episode = -1
-
         self.actions = np.zeros(self.steps)
         self.rtn = np.ones(self.steps)
         self.mkt_rtn = np.zeros(self.steps)
@@ -73,20 +67,22 @@ class TradingEnv(gym.Env):
         self.state_buffer = np.zeros((self.sequence_length, 10), dtype=np.float32)
 
         if self.episode != -1:
-            # Each episode uses data from a different year
-            # The first time we call reset is to initialize agent (episode = -1)
-            # Then we call reset for episode 0, 1, 2, etc.
-            start_idx = self.episode * 252
-            end_idx = start_idx + 252
-            self.df = self.data.iloc[start_idx:end_idx].copy()
+            self.df = self.filter_data(self.episode, 1)
         
         self.episode += 1
         
         return (self.state_buffer, {})
+    
+    def filter_data(self, start, period):
+        # Each episode uses data from a different year
+        # The first time we call reset is to initialize agent (episode = -1)
+        # Then we call reset for episode 0, 1, 2, etc.
+        start_idx = start * 252
+        end_idx = start_idx + 252 * period
+        return self.data.iloc[start_idx:end_idx].copy()
 
     def step(self, action):
-        assert self.action_space.contains(action), f"{action} ({type(action)}) invalid"
-        logging.info(f"{action} ({type(action)}) invalid" )
+        assert self.action_space.contains(action), f" Invalid Action: {action} ({type(action)}) invalid"
 
         # Update the state sequence with the latest observation
         obs = self.df.iloc[self.current_step]
