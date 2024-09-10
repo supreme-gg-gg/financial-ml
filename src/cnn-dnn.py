@@ -3,33 +3,35 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Conv1D, MaxPooling1D, Flatten, Dense, LSTM, Dropout
 from tensorflow.keras.optimizers import Adam
 from sklearn.preprocessing import MinMaxScaler
+from sklearn.model_selection import train_test_split
 import pandas as pd
 import numpy as np
+from utils.helper import get_data
 
 import matplotlib
 matplotlib.use('TkAgg')
 
-
 import matplotlib.pyplot as plt
 
 # Load the stock data
-data = pd.read_csv('AAPL_raw.csv', index_col='Date', parse_dates=True)
+# data = pd.read_csv('AAPL_raw.csv', index_col='Date', parse_dates=True)
+data = get_data("GOOG")
 
 # Select the features you want to use for training
-features = ['Open', 'High', 'Low', 'Close', 'EMA4', 'EMA8', 'EMA16']
+features = ['Open', 'High', 'Low', 'Close', 'SMA', 'EMA']
 data = data[features]
+
+labels = data["Close"].shift(-1).dropna()
+
+# For predicting closing you need to drop closing column to prevent leakage
+data.drop(["Close"], inline=True)
 
 # Normalize the data
 scaler = MinMaxScaler(feature_range=(0, 1))
-data[features] = scaler.fit_transform(data[features])
+data = scaler.fit_transform(data)
 
 # Create the training and testing datasets
-train_data = data[:-300]
-test_data = data[-300:]
-
-# Create the training and testing labels
-train_labels = train_data['Close'].shift(-1).dropna()
-test_labels = test_data['Close'].shift(-1).dropna()
+train_data, test_data, train_labels, test_labels = train_test_split(data, labels, test_size=0.3, train_size=0.7, shuffle=False)
 
 # Create the training and testing sequences
 def create_sequences(data, labels, seq_length):
@@ -42,7 +44,9 @@ def create_sequences(data, labels, seq_length):
         y.append(_y)
     return np.array(X), np.array(y)
 
-seq_length = 10
+seq_length = 10 # Two weeks of sequential data
+
+# train_X will be a 3D array and train_y a 2D array
 train_X, train_y = create_sequences(train_data, train_labels, seq_length)
 test_X, test_y = create_sequences(test_data, test_labels, seq_length)
 
