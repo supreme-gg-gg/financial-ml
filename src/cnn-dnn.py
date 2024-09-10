@@ -50,20 +50,26 @@ seq_length = 10 # Two weeks of sequential data
 train_X, train_y = create_sequences(train_data, train_labels, seq_length)
 test_X, test_y = create_sequences(test_data, test_labels, seq_length)
 
-# Define the CNN-DNN model
-model = Sequential()
-model.add(Conv1D(filters=64, kernel_size=3, activation='relu', input_shape=(seq_length, len(features))))
-model.add(MaxPooling1D(pool_size=2))
-model.add(Conv1D(filters=128, kernel_size=3, activation='relu'))
-model.add(MaxPooling1D(pool_size=2))
-model.add(Flatten())
-model.add(Dense(256, activation='relu'))  # Increased number of units
-model.add(Dropout(0.2))
-model.add(Dense(128, activation='relu'))  # Added another dense layer
-model.add(Dense(1, activation='linear'))
+def create_model():
 
-# Compile the model
-model.compile(optimizer=Adam(learning_rate=0.0001), loss='mse')  # Reduced learning rate
+    # Define the CNN-DNN model
+    model = Sequential()
+    model.add(Conv1D(filters=64, kernel_size=3, activation='relu', input_shape=(seq_length, len(features))))
+    model.add(MaxPooling1D(pool_size=2))
+    model.add(Conv1D(filters=128, kernel_size=3, activation='relu'))
+    model.add(MaxPooling1D(pool_size=2))
+    model.add(Flatten())
+    model.add(Dense(256, activation='relu'))  # Increased number of units
+    model.add(Dropout(0.2))
+    model.add(Dense(128, activation='relu'))  # Added another dense layer
+    model.add(Dense(1, activation='linear'))
+
+    # Compile the model
+    model.compile(optimizer=Adam(learning_rate=0.0001), loss='mse')  # Reduced learning rate
+
+    return model
+
+model = create_model()
 
 # Train the model
 model.fit(train_X, train_y, epochs=100, batch_size=32, validation_data=(test_X, test_y))  # Increased epochs
@@ -74,6 +80,7 @@ print('Test Loss:', loss)
 
 # Make predictions
 predictions = model.predict(test_X)
+model.save("cnn_model.keras")
 
 # Inverse transform the predictions to get the original scale
 # Use the 'Close' feature scaler to inverse transform the predictions
