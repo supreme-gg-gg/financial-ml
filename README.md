@@ -1,35 +1,16 @@
 # financial-ml
-Working Directory for Financial Machine Learning Research in Supervised and Reinforcement Learning Approaches in Various Asset Markets. For each model you submit, you should always include an evaluation (preferably a Jupyter notebook that shows some sort of visualization like a graph or table).
+Financial Machine Learning Research in Supervised and Reinforcement Learning Approaches in Various Asset Markets. Implementing and evaluating state of the art models proposed in research papers. Work in Progress from 2024 summer by a small team of students.
 
-## File structure
+## Description
 
-Before you push any code, please follow this structure to avoid conflicts and for easy navigation.
+As the project is still being worked on, not all progress are merged with main branch. We currently are developing and researching three models -- CNN, DNN, and deep RL. In the future reference research papers will be added. Core models are built using PyTorch and Tensorflow, MDP process for deep RL is modelled using Gymnasium API (custom env). 
 
-```plaintext
-financial-ml/
-│
-├── src/ # Contain different models
-│   ├── gdqn/
-|   ├── dnn/
-|   └── lstm/
-│
-├── test/ # Test cases for the codebase
-|
-├── data/ # Upload your dataset here
-|
-├── models/ # Please set all your scripts to save models here
-|
-├── utils/ # helper functions, visualization, envs
-|
-└── setenv.sh # source this to run scripts
-```
+## Known Issue
 
-## A note to developers
-
-To resolve file import conflicts, we sometimes use absolute import. It requires you to run the following setup commands (in a bash shell) for every terminal session from the root (financial-ml) directory:
+_As we are updating file structure to avoid absolute import, this issue will hopefully be resolved._ For now, run the following setup commands from the root (financial-ml) directory:
 
 ```
 source setenv.sh
 ```
 
-This is a very inefficient way of working and should be replaced by a workaround in the future. If you run into any file path errors, it is likely caused by the non-ideal repository structure of the project. As the modularisation process progresses we expect improvements.
+This is a very inefficient way of working and should be replaced by a workaround in the future. If you run into any file path errors, it is likely caused by the non-ideal repository structure of the project.
